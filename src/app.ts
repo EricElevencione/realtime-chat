@@ -194,6 +194,24 @@ io.on("connection", (socket) => {
   });
 });
 
+app.get("/conversations/:id/messages", async (req, res) => {
+  const conversationId = Number(req.params.id);
+
+  const userId = await prisma.conversation.findUnique({
+    where: {
+      id: conversationId,
+    },
+  });
+
+  if (userId === undefined) {
+    return res.status(400).send("The id doesn't defined");
+  }
+
+  if (userId !== null) {
+    // Maybe return userId?
+  }
+});
+
 // Simple health-check endpoint to confirm the API is running.
 app.get("/", (_req, res) => {
   res.send("Real-Time Chat API is running");
