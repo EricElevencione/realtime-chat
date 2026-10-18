@@ -4,6 +4,7 @@ import express from "express";
 import "dotenv/config";
 import jwt from "jsonwebtoken";
 import { prisma } from "./db.js";
+import { verifyToken } from "./auth.js";
 
 const app = express();
 
@@ -49,18 +50,17 @@ io.use((socket, next) => {
     return next(new Error("Server authentication is not configured"));
   }
 
-  // Ensure the client provided a token as a string.
-  if (typeof token !== "string") {
-    return next(new Error("Authentication token is missing"));
-  }
-
   try {
     // Verify the signature and expiration of the token.
-    const decoded = jwt.verify(token, secret);
-
-    // Store the verified identity for use in later event handlers.
-    socket.data.user = decoded;
-
+    if (token === null) {
+      return next(new Error("Token is missing"));
+      // Ensure the client provided a token as a string.
+    } else if (typeof token !== "string") {
+      return next(new Error("Authentication token is missing"));
+    } else {
+      // Store the verified identity for use in later event handlers.
+      socket.data.user = verifyToken(token);
+    }
     // Allow the connection to proceed after successful authentication.
     next();
   } catch {
