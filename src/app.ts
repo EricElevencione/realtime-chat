@@ -5,6 +5,7 @@ import "dotenv/config";
 import jwt from "jsonwebtoken";
 import { prisma } from "./db.js";
 import { verifyToken } from "./auth.js";
+import { requireAuth } from "./auth.js";
 
 const app = express();
 
@@ -23,7 +24,7 @@ app.post("/dev/token", (_req, res) => {
   }
 
   // Generate a token containing the user's ID that expires in one hour.
-  const token = jwt.sign({ userId: 1 }, secret, { expiresIn: "1h" });
+  const token = jwt.sign({ id: 1 }, secret, { expiresIn: "1h" });
 
   res.json({ token });
 });
@@ -43,24 +44,15 @@ const io = new Server(httpServer, {
 // Authenticate each Socket.IO connection using a JWT.
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-  const secret = process.env.JWT_SECRET;
 
-  // Reject the connection if server authentication is not configured.
-  if (!secret) {
-    return next(new Error("Server authentication is not configured"));
+  if (typeof token !== "string") {
+    return next(new Error("Authentication token is missing"));
   }
 
   try {
-    // Verify the signature and expiration of the token.
-    if (token === null) {
-      return next(new Error("Token is missing"));
-      // Ensure the client provided a token as a string.
-    } else if (typeof token !== "string") {
-      return next(new Error("Authentication token is missing"));
-    } else {
-      // Store the verified identity for use in later event handlers.
-      socket.data.user = verifyToken(token);
-    }
+    // Store the verified identity for use in later event handlers.
+    socket.data.user = verifyToken(token);
+
     // Allow the connection to proceed after successful authentication.
     next();
   } catch {
@@ -215,6 +207,14 @@ app.get("/conversations/:id/messages", async (req, res) => {
 // Simple health-check endpoint to confirm the API is running.
 app.get("/", (_req, res) => {
   res.send("Real-Time Chat API is running");
+});
+
+// Tempo file for testing
+app.get("/test-auth", requireAuth, (req, res) => {
+  return res.status(200).json({
+    message: "Authentication successful",
+    user: res.locals.user,
+  });
 });
 
 // Export the HTTP server so another file can start listening on a port.

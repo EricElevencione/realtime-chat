@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import "dotenv/config";
+import type { Request, Response, NextFunction } from "express";
 
 // Get the token
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -13,6 +14,33 @@ if (!JWT_SECRET) {
 interface TokenPayload {
   id: number;
 }
+
+// Middleware
+export const requireAuth = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const header = req.headers.authorization;
+
+  if (!header || !header.startsWith("Bearer ")) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized: Missing or invalid token format" });
+  }
+
+  const token = header.substring(7);
+
+  try {
+    const user = verifyToken(token);
+
+    res.locals.user = user;
+
+    next();
+  } catch {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
 
 export const verifyToken = (token: string): TokenPayload => {
   try {
