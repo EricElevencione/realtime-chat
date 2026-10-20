@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "./db.js";
 import { verifyToken } from "./auth.js";
 import { requireAuth } from "./auth.js";
+import { isConversationMember } from "./membership.js";
 
 const app = express();
 
@@ -85,16 +86,9 @@ io.on("connection", (socket) => {
     }
 
     try {
-      const membership = await prisma.conversationMember.findUnique({
-        where: {
-          userId_conversationId: {
-            userId,
-            conversationId,
-          },
-        },
-      });
+      const isMember = await isConversationMember(userId, conversationId);
 
-      if (!membership) {
+      if (!isMember) {
         socket.emit(
           "errorMessage",
           "You are not a member of this conversation",
