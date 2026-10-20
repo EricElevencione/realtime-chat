@@ -186,21 +186,37 @@ io.on("connection", (socket) => {
   });
 });
 
-app.get("/conversations/:id/messages", async (req, res) => {
+// Temporary
+app.get("/:id/messages", requireAuth, async (req, res) => {
   const conversationId = Number(req.params.id);
-
-  const userId = await prisma.conversation.findUnique({
-    where: {
-      id: conversationId,
-    },
-  });
-
-  if (userId === undefined) {
-    return res.status(400).send("The id doesn't defined");
+  if (!Number.isSafeInteger(conversationId) || conversationId <= 0) {
+    return res.status(400).json({
+      message: "Invalid conversation id",
+    });
   }
-
-  if (userId !== null) {
-    // Maybe return userId?
+  // Parse and clamp the limit (default 50, max 100)
+  const rawLimit = req.query.limit;
+  const parsedLimit =
+    typeof rawLimit === "string" && rawLimit !== "" ? Number(rawLimit) : NaN;
+  const limit = Number.isInteger(parsedLimit)
+    ? Math.max(1, Math.min(parsedLimit, 100))
+    : 50;
+  try {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+    // Always send back the response so curl does not get stuck!
+    return res.status(200).json({
+      conversationId,
+      limit,
+      user: res.locals.user,
+    });
+  } catch (error) {
+    console.error("Failed to fetch messages:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -218,4 +234,5 @@ app.get("/test-auth", requireAuth, (req, res) => {
 });
 
 // Export the HTTP server so another file can start listening on a port.
+
 export { httpServer };
