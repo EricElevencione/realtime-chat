@@ -7,10 +7,12 @@ import { prisma } from "./db.js";
 import { verifyToken } from "./auth.js";
 import { requireAuth } from "./auth.js";
 import { isConversationMember } from "./membership.js";
+import conversationsRouter from "./conversations.routes.js";
 
 const app = express();
 
 app.use(express.json());
+app.use("/conversations", conversationsRouter);
 
 // Development endpoint for generating a JWT.
 // Do not expose this unrestricted endpoint in production.
@@ -78,7 +80,7 @@ io.on("connection", (socket) => {
     }
 
     const conversationId = Number(rawConversationId);
-    const userId = socket.data.user?.userId;
+    const userId = socket.data.user?.id;
 
     if (!Number.isSafeInteger(conversationId) || typeof userId !== "number") {
       socket.emit("errorMessage", "Invalid user or conversation ID");
@@ -118,7 +120,7 @@ io.on("connection", (socket) => {
     }
 
     const { conversationId: rawConversationId, message } = payload;
-    const userId = socket.data.user?.userId;
+    const userId = socket.data.user?.id;
 
     if (
       typeof rawConversationId !== "string" ||
@@ -141,16 +143,9 @@ io.on("connection", (socket) => {
 
     try {
       // Check membership on the server; never trust the client alone.
-      const membership = await prisma.conversationMember.findUnique({
-        where: {
-          userId_conversationId: {
-            userId,
-            conversationId,
-          },
-        },
-      });
+      const isMember = await isConversationMember(userId, conversationId);
 
-      if (!membership) {
+      if (!isMember) {
         socket.emit(
           "errorMessage",
           "You are not a member of this conversation",
@@ -180,39 +175,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Temporary
-app.get("/:id/messages", requireAuth, async (req, res) => {
-  const conversationId = Number(req.params.id);
-  if (!Number.isSafeInteger(conversationId) || conversationId <= 0) {
-    return res.status(400).json({
-      message: "Invalid conversation id",
-    });
-  }
-  // Parse and clamp the limit (default 50, max 100)
-  const rawLimit = req.query.limit;
-  const parsedLimit =
-    typeof rawLimit === "string" && rawLimit !== "" ? Number(rawLimit) : NaN;
-  const limit = Number.isInteger(parsedLimit)
-    ? Math.max(1, Math.min(parsedLimit, 100))
-    : 50;
-  try {
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-    });
-    if (!conversation) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-    // Always send back the response so curl does not get stuck!
-    return res.status(200).json({
-      conversationId,
-      limit,
-      user: res.locals.user,
-    });
-  } catch (error) {
-    console.error("Failed to fetch messages:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-});
 
 // Simple health-check endpoint to confirm the API is running.
 app.get("/", (_req, res) => {
