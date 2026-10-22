@@ -8,6 +8,7 @@ import { verifyToken } from "./auth.js";
 import { requireAuth } from "./auth.js";
 import { isConversationMember } from "./membership.js";
 import conversationsRouter from "./conversations.routes.js";
+import { markConversationRead } from "./readState.js";
 
 const app = express();
 
@@ -17,6 +18,12 @@ app.use("/conversations", conversationsRouter);
 // Development endpoint for generating a JWT.
 // Do not expose this unrestricted endpoint in production.
 app.post("/dev/token", (_req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({
+      error: "Endpoint not available in production",
+    });
+  }
+
   const secret = process.env.JWT_SECRET;
 
   // Prevent token generation if the server secret is missing.
@@ -66,6 +73,10 @@ io.use((socket, next) => {
 
 // Register event handlers for each successfully authenticated client.
 
+function isPositiveInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
@@ -106,6 +117,58 @@ io.on("connection", (socket) => {
       socket.emit("errorMessage", "Could not join conversation");
     }
   });
+
+  socket.on(
+    "markRead",
+    async (
+      payload: unknown,
+      ack?: (response: { ok: boolean; message?: string }) => void,
+    ) => {
+      const reply = typeof ack === "function" ? ack : () => {};
+
+      // 1. payload is untrusted: check it's two positive integers
+      const { conversationId, messageId } = (payload ?? {}) as {
+        conversationId?: unknown;
+        messageId?: unknown;
+      };
+
+      if (!isPositiveInt(conversationId) || !isPositiveInt(messageId)) {
+        return reply({ ok: false, message: "Invalid payload" });
+      }
+
+      // 2. identity comes from the token, never from the payload
+      const userId = socket.data.user?.id;
+      if (typeof userId !== "number") {
+        return reply({ ok: false, message: "Unauthorized" });
+      }
+
+      try {
+        // 3. permission comes from the database
+        const isMember = await isConversationMember(userId, conversationId);
+        if (!isMember) {
+          return reply({ ok: false, message: "Forbidden" });
+        }
+
+        // 4. move the pointer (your chunk 2 function)
+        const ok = await markConversationRead(
+          userId,
+          conversationId,
+          messageId,
+        );
+        if (!ok) {
+          return reply({
+            ok: false,
+            message: "Message not found in this conversation",
+          });
+        }
+
+        return reply({ ok: true });
+      } catch (error) {
+        console.error("markRead failed:", error);
+        return reply({ ok: false, message: "Server error" });
+      }
+    },
+  );
 
   // Save the message first, then broadcast the saved database record.
   socket.on("sendMessage", async (payload: unknown) => {
@@ -174,7 +237,6 @@ io.on("connection", (socket) => {
     console.log("User disconnected:", socket.id);
   });
 });
-
 
 // Simple health-check endpoint to confirm the API is running.
 app.get("/", (_req, res) => {

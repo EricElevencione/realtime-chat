@@ -2,6 +2,7 @@ import express from "express";
 import { requireAuth } from "./auth.js";
 import { isConversationMember } from "./membership.js";
 import { prisma } from "./db.js";
+import { getUnreadCount } from "./readState.js";
 
 const router = express.Router();
 const MAX_INT = 2_147_483_647; // Max signed 32-bit integer for PostgreSQL/Prisma Int
@@ -95,6 +96,31 @@ router.get("/:id/messages", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch messages:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.get("/:id/unread", requireAuth, async (req, res) => {
+  const userId = res.locals.user.id;
+  const conversationId = Number(req.params.id);
+
+  // 1. validate (same as the history route)
+  if (!Number.isSafeInteger(conversationId) || conversationId <= 0) {
+    return res.status(400).json({ message: "Invalid conversation id" });
+  }
+
+  try {
+    // 2. authorize (same as the history route)
+    const isMember = await isConversationMember(userId, conversationId);
+    if (!isMember) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // 3. count
+    const unreadCount = await getUnreadCount(userId, conversationId);
+    return res.json({ unreadCount });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

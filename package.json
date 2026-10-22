@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx test-final.ts",
+    "test:final": "tsx test-final.ts",
+    "test:read-state": "tsx test-read-state.ts",
     "dev": "tsx src/server.ts"
   },
   "keywords": [],
