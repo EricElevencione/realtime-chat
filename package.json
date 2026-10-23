@@ -2,8 +2,11 @@
   "name": "realtime-chat-api",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
+  "type": "module",
   "scripts": {
+    "build": "prisma generate && tsc",
+    "start": "node dist/server.js",
     "test": "tsx test-final.ts",
     "test:final": "tsx test-final.ts",
     "test:read-state": "tsx test-read-state.ts",

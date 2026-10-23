@@ -33,10 +33,31 @@ Designed for high reliability, room isolation, secure authentication, cursor-bas
 
 ---
 
-## 📋 Prerequisites
+## 🐳 One-Command Local Setup (Docker Compose)
 
-- **Node.js** (v18.0.0 or later recommended; tested on Node.js v22)
+Anyone can run this entire stack locally with zero manual database configuration using Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+**What this spins up automatically**:
+- **PostgreSQL 16**: With healthcheck verification and persistent data volume (`postgres_data`).
+- **Redis 7**: In-memory cache and real-time pub/sub layer.
+- **Chat API**: Builds from `node:20-alpine`, automatically applies migrations via `prisma migrate deploy`, and starts the server on `http://localhost:3000`.
+
+To stop the containers:
+```bash
+docker compose down
+```
+
+---
+
+## 📋 Prerequisites (For Local Non-Docker Development)
+
+- **Node.js** (v20.0.0 or later recommended; tested on Node.js v20/v22)
 - **PostgreSQL** database instance
+- **Docker & Docker Compose** (optional, for containerized run)
 
 ---
 
@@ -51,7 +72,7 @@ PORT=3000
 NODE_ENV="development"
 ```
 
-> **Note**: `.env` is ignored by git to protect credentials.
+> **Note**: `.env` is ignored by git to protect credentials. Inside Docker, `DATABASE_URL` connects using the container name `postgres` instead of `localhost`.
 
 ---
 
@@ -72,15 +93,25 @@ NODE_ENV="development"
    npx prisma generate
    ```
 
+4. **Build TypeScript for Production**:
+   ```bash
+   npm run build
+   ```
+
 ---
 
 ## 🚦 Running the Application
 
-### Development Server
+### Development Server (Hot Reload via tsx)
 ```bash
 npm run dev
 ```
-The server starts listening on `http://localhost:3000`.
+
+### Production Server (Compiled JavaScript)
+```bash
+npm start
+```
+The server starts listening on `http://0.0.0.0:3000` (or `PORT` provided by your cloud host).
 
 ---
 
@@ -126,10 +157,37 @@ npx tsx test-socket-auth.ts
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `GET` | `/` | None | Service health-check |
+| `GET` | `/` | None | Service root check |
+| `GET` | `/health` | None | Production readiness & liveness check with DB ping |
 | `POST` | `/dev/token` | None | Dev token generator (*disabled when `NODE_ENV=production`*) |
 | `GET` | `/conversations/:id/messages` | `Bearer <JWT>` | Paginated message history (`?limit=50&before=<messageId>`) |
 | `GET` | `/conversations/:id/unread` | `Bearer <JWT>` | Retrieves the current user's unread message count |
+
+---
+
+## 🚀 Deployment & CI/CD
+
+### 🔄 GitHub Actions CI Pipeline
+Every push and pull request to `main` triggers `.github/workflows/ci.yml`:
+1. Spawns an ephemeral PostgreSQL 16 container.
+2. Installs clean dependencies with `npm ci`.
+3. Runs `prisma migrate deploy` to test migrations.
+4. Executes the full integration test suite (`npm test`).
+5. Compiles TypeScript with `npm run build` to verify type safety.
+
+### ☁️ Production Deployment (Render / Railway / Fly.io)
+
+1. **Connect Repository**: Link this GitHub repository to Render or Railway.
+2. **Provision Managed PostgreSQL**: Create a hosted PostgreSQL database on the platform.
+3. **Environment Variables**:
+   - `DATABASE_URL`: Set to the managed database connection string.
+   - `JWT_SECRET`: Set to a strong production secret.
+   - `NODE_ENV`: Set to `production`.
+4. **Build & Release Settings**:
+   - **Build Command**: `npm ci && npm run build`
+   - **Pre-deploy / Release Command**: `npx prisma migrate deploy`
+   - **Start Command**: `npm start`
+   - **Health Check Path**: `/health`
 
 ### Socket.IO Events
 

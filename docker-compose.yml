@@ -1,0 +1,62 @@
+services:
+  # 1. PostgreSQL Database Service
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: realtime_chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d realtime_chat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis In-Memory Service (Pub/Sub & Caching)
+  redis:
+    image: redis:7-alpine
+    container_name: chat_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Real-Time Chat API Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat_api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_SECRET: super-secret-jwt-key-for-local-docker-testing
+      # Connect to Postgres using the service name 'postgres' instead of 'localhost'
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/realtime_chat?schema=public"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Run database migrations before starting the application server
+    command: sh -c "npx prisma migrate deploy && node dist/server.js"
+
+volumes:
+  postgres_data:
+  redis_data:

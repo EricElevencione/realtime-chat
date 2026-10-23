@@ -238,9 +238,26 @@ io.on("connection", (socket) => {
   });
 });
 
-// Simple health-check endpoint to confirm the API is running.
+// Simple endpoint to confirm the API is running.
 app.get("/", (_req, res) => {
   res.send("Real-Time Chat API is running");
+});
+
+// Production readiness and liveness check endpoint
+app.get("/health", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    res.status(503).json({
+      status: "unhealthy",
+      error: "Database connectivity check failed",
+    });
+  }
 });
 
 // Tempo file for testing
